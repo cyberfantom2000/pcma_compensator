@@ -46,15 +46,19 @@ module pcma_equalizer #(
 	
     output [OUT_D_WIDTH-1            :0] o_dout_I  ,		
 	output [OUT_D_WIDTH-1            :0] o_dout_Q  ,
-	output 								 o_vld     
+	output 								 o_vld     ,
+    
+    output [OUT_D_WIDTH-1            :0]  o_test_I  ,		
+	output [OUT_D_WIDTH-1            :0]  o_test_Q  ,
+	output 								  o_vld_test     
 );
 
 
 //****** Constant and Parameters ******//
 localparam 						FULL_COE_WIDTH = COE_WIDTH + INV_COE_WIDTH;
-localparam 					    EQ_HIGH_BIT    = IQ_WIDTH  + COE_WIDTH + 3;	 // Старший бит выхода эквалазйера		
+localparam 					    EQ_HIGH_BIT    = 22;	 // Старший бит выхода эквалазйера		
 localparam [FULL_COE_WIDTH-1:0] COE_ONE_VAL    = (2**(COE_WIDTH-3))-1     ;
-localparam 					    DATA_DELAY     = 19                       ; /* | EQ_LEN | DATA_DELAY |
+localparam 					    DATA_DELAY     = 20                       ; /* | EQ_LEN | DATA_DELAY |
                                                                                |    13   ->  15      |
                                                                                |    15   ->  16      |
                                                                                |    17   ->  18      |
@@ -73,23 +77,20 @@ reg  signed[FULL_COE_WIDTH-1:0] init_coe_r                ;
 wire signed[EQ_HIGH_BIT     :0] eq_II, eq_QQ, eq_IQ, eq_QI;
 reg  signed[EQ_HIGH_BIT     :0] comp_I, comp_Q            ;
 wire signed[IQ_WIDTH-1      :0] dly_comm_I, dly_comm_Q    ;   
-reg  signed[EQ_HIGH_BIT     :0] mult_comm_I, mult_comm_Q  ;
-reg  signed[EQ_HIGH_BIT     :0] subst_I, subst_Q          ;		 // Разница сиганлов суммарного и после эквалйзера
-wire signed[OUT_D_WIDTH-1   :0] round_I_w, round_Q_w      ;
-reg  signed[OUT_D_WIDTH-1   :0] round_I_r, round_Q_r      ;
+reg  signed[IQ_WIDTH-1      :0] dly_comm_I_sh0, dly_comm_Q_sh0, dly_comm_I_sh1, dly_comm_Q_sh1  ;
+reg  signed[IQ_WIDTH-1      :0] subst_I, subst_Q          ;		 // Разница сиганлов суммарного и после эквалйзера
+wire signed[IQ_WIDTH-1      :0] round_I_w, round_Q_w      ;
+reg  signed[IQ_WIDTH-1      :0] round_I_r, round_Q_r      ;
 reg						        iq_val_r                  ;
 reg                             load_coe_r                ;
 reg                             preset_coe_r              ;
 wire 					        eq_val_w                  ;
-reg						        eq_val_r                  ;
+reg						        eq_val_r0, eq_val_r1      ;
 
 
 // clk delay, resyns and pipeling
 always@(posedge clk) begin
-	if(!reset_n) begin
-		eq_val_r     <= 0;
-		round_I_r    <= 0;
-		round_Q_r    <= 0;
+	if(!reset_n) begin		
 		iq_val_r     <= 0;
 		load_coe_r   <= 0;
 		preset_coe_r <= 0;
@@ -107,9 +108,6 @@ always@(posedge clk) begin
 		data_I_r     <= i_data_I;
 		data_Q_r     <= i_data_Q;
 		init_coe_r   <= i_init_coe;		
-		eq_val_r     <= eq_val_w;		
-		round_I_r    <= round_I_w;
-		round_Q_r    <= round_Q_w;
 	end
 end
 
@@ -148,16 +146,16 @@ complex_lms_equalizer#(
 	._COE_NUM       (EQ_LEN       ),
 	._PHASE_NUM     (1            ),
     ._CROSS_EQ_TYPE (0            ),
-    ._IN_SYM_DLY    (10           )
+    ._IN_SYM_DLY    (12           )  //10
 )complex_eq_inst(
 	.clk            (clk          ),
     .reset          (!reset_n     ),
     .preset_coe     (preset_coe_r ),
 	.load_coe		(load_coe_r   ),	
     
-    .i_error_I      ( subst_I[EQ_HIGH_BIT]),
-    .i_error_Q      (~subst_Q[EQ_HIGH_BIT]), // инверсия потому что комплексносопряженная ошибка
-    .i_sym_vld      (iq_val_r             ),
+    .i_error_I      ( subst_I[IQ_WIDTH-1]),
+    .i_error_Q      (~subst_Q[IQ_WIDTH-1]), // инверсия потому что комплексносопряженная ошибка
+    .i_sym_vld      (eq_val_r1            ),
     .i_teach_en     (teach_en             ),
     .i_norm_period  (i_norm_per           ),
     
@@ -175,24 +173,35 @@ complex_lms_equalizer#(
 // Complex I/Q calc
 always@(posedge clk) begin
 	if(!reset_n) begin
-		mult_comm_I <= 0;
-		mult_comm_Q <= 0;
-		subst_I     <= 0;
-		subst_Q     <= 0;
-        comp_I      <= 0;
-        comp_Q      <= 0;
+		dly_comm_I_sh0 <= 0;
+        dly_comm_Q_sh0 <= 0;
+        dly_comm_I_sh1 <= 0;
+        dly_comm_Q_sh1 <= 0;
+		subst_I        <= 0;
+		subst_Q        <= 0;
+        comp_I         <= 0;
+        comp_Q         <= 0;
+        round_I_r      <= 0;
+		round_Q_r      <= 0;
+        eq_val_r0      <= 0;
+        eq_val_r1      <= 0; 
 	end else begin
         // Домножение чтобы привести к одной размерности       
-        mult_comm_I <= dly_comm_I * $signed(COE_ONE_VAL);
-        mult_comm_Q <= dly_comm_Q * $signed(COE_ONE_VAL);
+        dly_comm_I_sh0 <= dly_comm_I;
+        dly_comm_Q_sh0 <= dly_comm_Q;
+        dly_comm_I_sh1 <= dly_comm_I_sh0;
+        dly_comm_Q_sh1 <= dly_comm_Q_sh0;
         // Комплексно !!!СОПРЯЖЕННЫЕ!!! I и Q после эквалазйера
-        comp_I   <= eq_II + eq_QQ;           
-        comp_Q   <= eq_QI - eq_IQ;         
-          
-		if(iq_val_r) begin		 
+        comp_I    <= eq_II + eq_QQ;           
+        comp_Q    <= eq_QI - eq_IQ;         
+        round_I_r <= round_I_w;
+		round_Q_r <= round_Q_w;
+        eq_val_r0 <= eq_val_w;
+        eq_val_r1 <= eq_val_r0;     
+		if(eq_val_r1) begin		 
         // Нижний сигнал, его знак также является ошибкой для настрйоки эквалайзеров
-			subst_I <= mult_comm_I - comp_I;
-			subst_Q <= mult_comm_Q - comp_Q;
+			subst_I <= dly_comm_I_sh1 - round_I_r;
+			subst_Q <= dly_comm_Q_sh1 - round_Q_r;
 		end 
 	end
 end
@@ -200,28 +209,35 @@ end
 // round subst I
 ROUNDER#(
 	.DIN_WIDTH  (EQ_HIGH_BIT+1),
-    .DOUT_WIDTH (OUT_D_WIDTH  )
+    .DOUT_WIDTH (IQ_WIDTH  )
 )eq_round_I_inst(
 	.CLK        (clk      ),
-    .DIN        (subst_I  ),
-    .DIN_CE     (eq_val_w ),
+    .DIN        (comp_I   ),
+    .DIN_CE     (eq_val_r0),
     .DOUT       (round_I_w)
 );
 
 // round subst Q
 ROUNDER#(
 	.DIN_WIDTH  (EQ_HIGH_BIT+1),
-    .DOUT_WIDTH (OUT_D_WIDTH  )
+    .DOUT_WIDTH (IQ_WIDTH  )
 )eq_round_Q_inst(
 	.CLK        (clk      ),
-    .DIN        (subst_Q  ),
-    .DIN_CE     (eq_val_w ),
+    .DIN        (comp_Q   ),
+    .DIN_CE     (eq_val_r0),
     .DOUT       (round_Q_w)
 );
 
 /************************ Assign out port section ************************/
-assign o_dout_I = round_I_r;
-assign o_dout_Q = round_Q_r;
-assign o_vld    = eq_val_r;
+// assign o_dout_I = {{(OUT_D_WIDTH-IQ_WIDTH){subst_I[IQ_WIDTH-1]}},subst_I};
+// assign o_dout_Q = {{(OUT_D_WIDTH-IQ_WIDTH){subst_Q[IQ_WIDTH-1]}},subst_Q};
+// assign o_vld    = eq_val_r1;
+assign o_dout_I = {{(OUT_D_WIDTH-IQ_WIDTH){round_I_r[IQ_WIDTH-1]}},round_I_r};
+assign o_dout_Q = {{(OUT_D_WIDTH-IQ_WIDTH){round_Q_r[IQ_WIDTH-1]}},round_Q_r};
+assign o_vld    = eq_val_r1;
+
+assign o_test_I = {{(OUT_D_WIDTH-IQ_WIDTH){dly_comm_I_sh1[IQ_WIDTH-1]}},dly_comm_I_sh1};
+assign o_test_Q = {{(OUT_D_WIDTH-IQ_WIDTH){dly_comm_Q_sh1[IQ_WIDTH-1]}},dly_comm_Q_sh1};
+assign o_vld_test = eq_val_r1;
 
 endmodule

@@ -1,34 +1,35 @@
 module complex_lms_equalizer #(
+    parameter                   _OUT_D_WRTH     = 23,
     parameter                   _DATA_WIDTH     = 16,
     parameter                   _COE_WIDTH      = 16,
     parameter                   _INV_COE_WIDTH  = 8,
     parameter                   _COE_NUM        = 19,
-    parameter                   _PHASE_NUM      = 2 ,
+    parameter                   _PHASE_NUM      = 1 ,
     parameter                   _CROSS_EQ_TYPE  = 0 ,
     parameter                   _IN_SYM_DLY     = 7 
 )(
-    input                           clk             ,
-    input                           reset           ,
-    input                           preset_coe      ,   // reset coef to mind ...00100...
-    input                           load_coe        ,   // load init coef. Ставится на 1 такт для загрузки 1 коэф.
+    input                           clk       ,
+    input                           reset     ,
+    input                           preset_coe,   // reset coef to mind ...00100...
+    input                           load_coe  ,   // load init coef. Ставится на 1 такт для загрузки 1 коэф.
 
 // Equalization Error
-    input                           i_error_I       ,
-    input                           i_error_Q       ,
-    input                           i_sym_vld       ,
-    input                           i_teach_en      ,
-    input   [9         :0]          i_norm_period   ,
+    input                           i_error_I    ,
+    input                           i_error_Q    ,
+    input                           i_sym_vld    ,
+    input                           i_teach_en   ,
+    input   [9         :0]          i_norm_period,
 // Input Data               
-    input   [_DATA_WIDTH*_PHASE_NUM-1               :0] i_dtin_I   ,
-    input   [_DATA_WIDTH*_PHASE_NUM-1               :0] i_dtin_Q   ,
-    input                                               i_vldin    ,
-	input   [_COE_WIDTH+_INV_COE_WIDTH-1            :0] i_coedata  ,  // preset coef data
+    input   [_DATA_WIDTH*_PHASE_NUM-1   :0] i_dtin_I ,
+    input   [_DATA_WIDTH*_PHASE_NUM-1   :0] i_dtin_Q ,
+    input                                   i_vldin  ,
+	input   [_COE_WIDTH+_INV_COE_WIDTH-1:0] i_coedata,  // preset coef data
 // Output Data      
-    output  [(_DATA_WIDTH+_COE_WIDTH+4)*_PHASE_NUM-1:0] o_dout_II  ,
-    output  [(_DATA_WIDTH+_COE_WIDTH+4)*_PHASE_NUM-1:0] o_dout_QQ  ,
-    output  [(_DATA_WIDTH+_COE_WIDTH+4)*_PHASE_NUM-1:0] o_dout_IQ  ,
-    output  [(_DATA_WIDTH+_COE_WIDTH+4)*_PHASE_NUM-1:0] o_dout_QI  ,
-    output                                              o_vldout   
+    output  [_OUT_D_WRTH*_PHASE_NUM-1   :0] o_dout_II,        // Изменил разрядность выходных данных. Т.к. плохо округлялось
+    output  [_OUT_D_WRTH*_PHASE_NUM-1   :0] o_dout_QQ,        // до этого было [(_DATA_WIDTH+_COE_WIDTH+4)*_PHASE_NUM-1:0]
+    output  [_OUT_D_WRTH*_PHASE_NUM-1   :0] o_dout_IQ,
+    output  [_OUT_D_WRTH*_PHASE_NUM-1   :0] o_dout_QI,
+    output                                  o_vldout   
 );
 
 

@@ -42,7 +42,11 @@ module pcma_compensator#(
 	
 	output [OUT_D_WIDTH-1            :0]  o_dout_I  ,		
 	output [OUT_D_WIDTH-1            :0]  o_dout_Q  ,
-	output 								  o_vld	    
+	output 								  o_vld	    ,
+
+    output [OUT_D_WIDTH-1            :0]  o_test_I  ,		
+	output [OUT_D_WIDTH-1            :0]  o_test_Q  ,
+	output 								  o_vld_test  
 );
 
 
@@ -162,7 +166,10 @@ pcma_equalizer#(
 	
 	.o_dout_I	   (o_dout_I   ),
 	.o_dout_Q	   (o_dout_Q   ),
-	.o_vld         (o_vld      )
+	.o_vld         (o_vld      ),
+    .o_test_I      (o_test_I   ),
+    .o_test_Q      (o_test_Q   ),
+    .o_vld_test    (o_vld_test )
 );
 
 endmodule
